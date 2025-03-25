@@ -1,0 +1,204 @@
+import React, { useState, useRef } from 'react';
+import { 
+  Camera, 
+  Upload, 
+  Loader2, 
+  Check, 
+  X, 
+  RefreshCw 
+} from 'lucide-react';
+
+// Tailwind CSS for styling
+const App = () => {
+  const [image, setImage] = useState(null);
+  const [prediction, setPrediction] = useState(null);
+  const [confidence, setConfidence] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const canvasRef = useRef(null);
+  const fileInputRef = useRef(null);
+
+  // Drawing state for canvas
+  const [isDrawing, setIsDrawing] = useState(false);
+
+  // Handle file upload
+  const handleFileUpload = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onloadend = async () => {
+      setImage(reader.result);
+      await predictImage(reader.result);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Predict image via API
+  const predictImage = async (imageData) => {
+    setLoading(true);
+    setError(null);
+    setPrediction(null);
+    setConfidence(null);
+
+    try {
+      const response = await fetch('http://localhost:5000/predict', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ image: imageData })
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setPrediction(data.prediction);
+        setConfidence((data.confidence * 100).toFixed(2));
+      } else {
+        setError(data.error || 'Prediction failed');
+      }
+    } catch (err) {
+      setError('Network error. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Canvas drawing methods
+  const startDrawing = (e) => {
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    ctx.strokeStyle = 'white';
+    ctx.lineWidth = 15;
+    ctx.lineCap = 'round';
+
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    setIsDrawing(true);
+  };
+
+  const draw = (e) => {
+    if (!isDrawing) return;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    ctx.lineTo(x, y);
+    ctx.stroke();
+  };
+
+  const stopDrawing = async () => {
+    if (!isDrawing) return;
+    setIsDrawing(false);
+
+    // Convert canvas to image for prediction
+    const canvas = canvasRef.current;
+    const imageData = canvas.toDataURL('image/png');
+    await predictImage(imageData);
+  };
+
+  // Clear canvas
+  const clearCanvas = () => {
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = 'black';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    setPrediction(null);
+    setConfidence(null);
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-900 text-white flex flex-col items-center justify-center p-4">
+      <div className="w-full max-w-md bg-gray-800 rounded-xl shadow-2xl p-6">
+        <h1 className="text-3xl font-bold mb-6 text-center">
+          Handwritten Digit Recognition
+        </h1>
+
+        {/* Canvas for drawing */}
+        <div className="mb-4 relative">
+          <canvas 
+            ref={canvasRef}
+            width={280} 
+            height={280}
+            className="bg-black rounded-lg w-full"
+            onMouseDown={startDrawing}
+            onMouseMove={draw}
+            onMouseUp={stopDrawing}
+            onMouseOut={stopDrawing}
+          />
+          <button 
+            onClick={clearCanvas}
+            className="absolute top-2 right-2 bg-red-500 p-2 rounded-full hover:bg-red-600 transition"
+            title="Clear Canvas"
+          >
+            <RefreshCw size={20} />
+          </button>
+        </div>
+
+        {/* File Upload */}
+        <div className="flex justify-center mb-4">
+          <input 
+            type="file" 
+            ref={fileInputRef}
+            onChange={handleFileUpload}
+            accept="image/*"
+            className="hidden"
+          />
+          <button 
+            onClick={() => fileInputRef.current.click()}
+            className="flex items-center bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition"
+          >
+            <Upload className="mr-2" /> Upload Image
+          </button>
+        </div>
+
+        {/* Prediction Results */}
+        {loading && (
+          <div className="flex justify-center items-center">
+            <Loader2 className="animate-spin" size={32} />
+          </div>
+        )}
+
+        {error && (
+          <div className="bg-red-500 text-white p-3 rounded flex items-center">
+            <X className="mr-2" /> {error}
+          </div>
+        )}
+
+        {prediction !== null && !loading && (
+          <div className="mt-4 bg-gray-700 p-4 rounded-lg">
+            <div className="flex justify-between items-center">
+              <div>
+                <h2 className="text-xl font-semibold">Prediction</h2>
+                <p className="text-4xl font-bold text-green-400">
+                  {prediction}
+                </p>
+              </div>
+              <div className="text-right">
+                <h3 className="text-sm">Confidence</h3>
+                <p className="text-2xl font-bold text-blue-400">
+                  {confidence}%
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Footer */}
+      <footer className="mt-6 text-sm text-gray-400 text-center">
+        Powered by TensorFlow & React | Handwritten Digit Recognition
+      </footer>
+    </div>
+  );
+};
+
+export default App;
