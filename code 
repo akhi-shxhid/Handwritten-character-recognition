@@ -1,0 +1,204 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import tensorflow as tf
+from tensorflow import keras
+from tensorflow.keras import layers
+from tensorflow.keras.datasets import mnist
+from tensorflow.keras.utils import to_categorical
+
+# 1. Data Preparation
+def prepare_mnist_data():
+    """
+    Prepare MNIST dataset for training
+    
+    Returns:
+    - X_train, X_test: Image data
+    - y_train, y_test: Corresponding labels
+    """
+    # Load MNIST dataset
+    (X_train, y_train), (X_test, y_test) = mnist.load_data()
+    
+    # Normalize pixel values to between 0 and 1
+    X_train = X_train.astype('float32') / 255.0
+    X_test = X_test.astype('float32') / 255.0
+    
+    # Reshape for CNN input (add channel dimension)
+    X_train = X_train.reshape(X_train.shape[0], 28, 28, 1)
+    X_test = X_test.reshape(X_test.shape[0], 28, 28, 1)
+    
+    # One-hot encode the labels
+    y_train = to_categorical(y_train, 10)
+    y_test = to_categorical(y_test, 10)
+    
+    return X_train, X_test, y_train, y_test
+
+# 2. Model Architecture
+def create_cnn_model():
+    """
+    Create a Convolutional Neural Network for digit recognition
+    
+    Returns:
+    - Compiled Keras model
+    """
+    model = keras.Sequential([
+        # Convolutional layers
+        layers.Conv2D(32, (3, 3), activation='relu', input_shape=(28, 28, 1)),
+        layers.MaxPooling2D((2, 2)),
+        layers.Conv2D(64, (3, 3), activation='relu'),
+        layers.MaxPooling2D((2, 2)),
+        layers.Conv2D(64, (3, 3), activation='relu'),
+        
+        # Flatten and fully connected layers
+        layers.Flatten(),
+        layers.Dense(64, activation='relu'),
+        layers.Dropout(0.5),
+        layers.Dense(10, activation='softmax')  # 10 classes for digits 0-9
+    ])
+    
+    # Compile the model
+    model.compile(optimizer='adam',
+                  loss='categorical_crossentropy',
+                  metrics=['accuracy'])
+    
+    return model
+
+# 3. Training Function
+def train_model(model, X_train, y_train, X_test, y_test):
+    """
+    Train the handwritten character recognition model
+    
+    Args:
+    - model: Compiled Keras model
+    - X_train, y_train: Training data and labels
+    - X_test, y_test: Testing data and labels
+    
+    Returns:
+    - Trained model
+    - Training history
+    """
+    # Early stopping to prevent overfitting
+    early_stopping = keras.callbacks.EarlyStopping(
+        monitor='val_loss', 
+        patience=3, 
+        restore_best_weights=True
+    )
+    
+    # Train the model
+    history = model.fit(
+        X_train, y_train, 
+        epochs=20, 
+        batch_size=64, 
+        validation_split=0.2,
+        callbacks=[early_stopping]
+    )
+    
+    # Evaluate the model
+    test_loss, test_accuracy = model.evaluate(X_test, y_test)
+    print(f'\nTest accuracy: {test_accuracy * 100:.2f}%')
+    
+    return model, history
+
+# 4. Visualization and Prediction
+def visualize_predictions(model, X_test, y_test):
+    """
+    Visualize model predictions
+    
+    Args:
+    - model: Trained Keras model
+    - X_test: Test images
+    - y_test: Test labels
+    """
+    # Predict on test data
+    predictions = model.predict(X_test)
+    
+    # Plot some example predictions
+    plt.figure(figsize=(10, 10))
+    for i in range(25):
+        plt.subplot(5, 5, i+1)
+        plt.xticks([])
+        plt.yticks([])
+        plt.grid(False)
+        
+        # Display the image
+        plt.imshow(X_test[i].reshape(28, 28), cmap=plt.cm.binary)
+        
+        # Predicted class and true class
+        predicted_label = np.argmax(predictions[i])
+        true_label = np.argmax(y_test[i])
+        
+        # Color code the title based on correct/incorrect prediction
+        color = 'green' if predicted_label == true_label else 'red'
+        plt.title(f'P:{predicted_label} T:{true_label}', color=color)
+    
+    plt.tight_layout()
+    plt.show()
+
+# 5. Custom Image Prediction
+def predict_custom_image(model, image):
+    """
+    Predict digit for a custom image
+    
+    Args:
+    - model: Trained Keras model
+    - image: Preprocessed image (28x28 pixels, normalized)
+    
+    Returns:
+    - Predicted digit
+    """
+    # Reshape image for prediction
+    image = image.reshape(1, 28, 28, 1)
+    
+    # Predict
+    prediction = model.predict(image)
+    predicted_digit = np.argmax(prediction)
+    
+    return predicted_digit
+
+# Main Execution
+def main():
+    # Prepare data
+    X_train, X_test, y_train, y_test = prepare_mnist_data()
+    
+    # Create and train model
+    model = create_cnn_model()
+    trained_model, history = train_model(model, X_train, y_train, X_test, y_test)
+    
+    # Visualize predictions
+    visualize_predictions(trained_model, X_test, y_test)
+    
+    # Save the model
+    trained_model.save('handwritten_digit_recognition_model.h5')
+    print("Model saved successfully!")
+
+# Additional helper functions for advanced use
+def preprocess_custom_image(image_array):
+    """
+    Preprocess a custom image for prediction
+    
+    Args:
+    - image_array: NumPy array of the image
+    
+    Returns:
+    - Preprocessed image ready for model prediction
+    """
+    # Resize to 28x28
+    resized_image = tf.image.resize(image_array, [28, 28])
+    
+    # Convert to grayscale if needed
+    if len(resized_image.shape) == 3:
+        resized_image = tf.image.rgb_to_grayscale(resized_image)
+    
+    # Normalize
+    normalized_image = resized_image / 255.0
+    
+    return normalized_image
+
+# Run the main function when the script is executed
+if __name__ == '__main__':
+    main()
+
+# Example of how to use the model for custom prediction
+# load_model = keras.models.load_model('handwritten_digit_recognition_model.h5')
+# custom_image = ... # Your preprocessed image
+# prediction = predict_custom_image(load_model, custom_image)
+# print(f"Predicted Digit: {prediction}")
